@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talento País — Informe Ejecutivo Regional</title>
+<meta name="description" content="Panel para tomadores de decisión del Estado de Chile: situación laboral y formativa de carreras estratégicas por región, actualizada semanalmente.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="./" class="brand" id="brand-link">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">Talento País</span>
+      <span class="brand-sub">Informe Ejecutivo Regional</span>
+    </a>
+    <span class="badge-actualizado" id="badge-actualizado" hidden></span>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ══════════ VISTA 1 · SELECCIÓN ══════════ -->
+  <section id="vista-inicio" class="vista">
+    <div class="inicio-wrap">
+      <h1 class="inicio-titulo">¿Cómo está el talento<br>en su región?</h1>
+      <p class="inicio-sub">Situación laboral y formativa de las carreras de los sectores estratégicos de Chile, en menos de un minuto.</p>
+
+      <form id="form-consulta" class="consulta-card" autocomplete="off">
+        <div class="campo">
+          <label for="sel-region">Región</label>
+          <select id="sel-region" required>
+            <option value="" disabled selected>Seleccione una región</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="sel-carrera">Carrera</label>
+          <select id="sel-carrera" required>
+            <option value="" disabled selected>Seleccione una carrera</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-analizar">Analizar</button>
+      </form>
+
+      <p class="inicio-nota" id="inicio-nota">La información se actualiza automáticamente cada semana.</p>
+    </div>
+  </section>
+
+  <!-- ══════════ VISTA 2 · INFORME EJECUTIVO ══════════ -->
+  <section id="vista-informe" class="vista" hidden>
+
+    <div class="informe-toolbar no-print">
+      <a href="./" id="btn-volver" class="btn-secundario">← Nueva consulta</a>
+      <div class="toolbar-acciones">
+        <button type="button" id="btn-copiar" class="btn-secundario">Copiar enlace</button>
+        <button type="button" id="btn-imprimir" class="btn-secundario">Imprimir / PDF</button>
+      </div>
+    </div>
+
+    <!-- 1 · Encabezado -->
+    <header class="informe-head">
+      <p class="informe-sector" id="inf-sector"></p>
+      <h1 class="informe-carrera" id="inf-carrera"></h1>
+      <p class="informe-meta"><span id="inf-region"></span> · <span id="inf-actualizado"></span></p>
+    </header>
+
+    <!-- 2 · Indicadores principales -->
+    <div class="kpi-grid" role="list">
+      <div class="kpi" role="listitem">
+        <p class="kpi-label">Vacantes y señales de demanda</p>
+        <p class="kpi-valor" id="kpi-vacantes">—</p>
+        <p class="kpi-sub" id="kpi-vacantes-sub">sector · nivel nacional</p>
+      </div>
+      <div class="kpi" role="listitem">
+        <p class="kpi-label">Matrícula regional</p>
+        <p class="kpi-valor" id="kpi-matricula">—</p>
+        <p class="kpi-sub" id="kpi-matricula-sub">estudiantes en la región</p>
+      </div>
+      <div class="kpi" role="listitem">
+        <p class="kpi-label">Nivel de brecha</p>
+        <p class="kpi-valor kpi-valor-texto" id="kpi-brecha">—</p>
+        <p class="kpi-sub" id="kpi-brecha-sub">en esta región</p>
+      </div>
+      <div class="kpi" role="listitem">
+        <p class="kpi-label">Tendencia</p>
+        <p class="kpi-valor kpi-valor-texto" id="kpi-tendencia">—</p>
+        <p class="kpi-sub" id="kpi-tendencia-sub">demanda del sector, semanal</p>
+      </div>
+    </div>
+
+    <!-- 3 · Estado de la situación -->
+    <div class="estado-banner" id="estado-banner">
+      <span class="estado-punto" aria-hidden="true"></span>
+      <div>
+        <p class="estado-titulo" id="estado-titulo"></p>
+        <p class="estado-frase" id="estado-frase"></p>
+      </div>
+    </div>
+
+    <!-- 4 · Resumen ejecutivo -->
+    <article class="card card-resumen">
+      <h2>Resumen ejecutivo</h2>
+      <p id="resumen-texto"></p>
+    </article>
+
+    <!-- 5 · Recomendación -->
+    <article class="card card-recomendacion">
+      <h2>Recomendación para tomadores de decisión</h2>
+      <p id="reco-texto"></p>
+      <p class="reco-accion" id="reco-accion" hidden></p>
+    </article>
+
+    <div class="dos-columnas">
+      <!-- 6 · Contexto nacional -->
+      <article class="card">
+        <h2>Contexto nacional</h2>
+        <dl class="contexto-lista" id="contexto-lista"></dl>
+      </article>
+
+      <!-- 7 · Tendencia -->
+      <article class="card">
+        <h2>Tendencia de la demanda</h2>
+        <div id="tendencia-chart" class="tendencia-chart"></div>
+        <p class="tendencia-nota" id="tendencia-nota"></p>
+      </article>
+    </div>
+
+    <!-- 8 · Información secundaria -->
+    <div class="acordeones">
+      <details class="acordeon">
+        <summary>Oferta formativa en la región</summary>
+        <div class="acordeon-cuerpo" id="acc-oferta"></div>
+      </details>
+      <details class="acordeon">
+        <summary>Comparación entre regiones</summary>
+        <div class="acordeon-cuerpo" id="acc-regiones"></div>
+      </details>
+      <details class="acordeon">
+        <summary>Diagnóstico del sector</summary>
+        <div class="acordeon-cuerpo" id="acc-sector"></div>
+      </details>
+      <details class="acordeon">
+        <summary>Metodología, fuentes y limitaciones</summary>
+        <div class="acordeon-cuerpo" id="acc-metodo"></div>
+      </details>
+    </div>
+
+    <footer class="informe-pie">
+      <p>Talento País · Elaborado con datos públicos (Mineduc, ANID, Mercado Público y portales de empleo). Documento de apoyo a la decisión; no reemplaza estudios sectoriales en profundidad.</p>
+    </footer>
+  </section>
+
+  <p id="error-carga" class="error-carga" hidden>No fue posible cargar los datos. Revise su conexión e intente nuevamente.</p>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
