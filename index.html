@@ -4,11 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Talento País — Informe Ejecutivo Regional</title>
-<meta name="description" content="Panel para tomadores de decisión del Estado de Chile: situación laboral y formativa de carreras estratégicas por región, actualizada semanalmente.">
+<meta name="description" content="Panel para tomadores de decisión del Estado de Chile: situación laboral y formativa de carreras estratégicas por región, con actualización periódica.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body class="modo-hero">
 
@@ -39,7 +41,7 @@
           <p class="hero-kicker">Plataforma de apoyo a la decisión · Estado de Chile</p>
           <h1 class="hero-titulo">El talento del país,<br><em>región por región</em>.</h1>
           <p class="hero-sub">La situación laboral y formativa de cada carrera estratégica, explicada en menos de un minuto. Para ministerios, gobiernos regionales y servicios públicos.</p>
-          <p class="hero-nota" id="inicio-nota">La información se actualiza automáticamente cada semana.</p>
+          <p class="hero-nota" id="inicio-nota">La información se actualiza automáticamente de forma periódica.</p>
         </div>
 
         <form id="form-consulta" class="consulta-card" autocomplete="off">
@@ -51,10 +53,15 @@
             </select>
           </div>
           <div class="campo">
-            <label for="sel-carrera">Carrera</label>
-            <select id="sel-carrera" required>
-              <option value="" disabled selected>Seleccione una carrera</option>
-            </select>
+            <label for="buscar-carrera">Carrera</label>
+            <div class="buscar-wrap">
+              <input type="text" id="buscar-carrera" class="buscar-input"
+                     placeholder="Buscar por nombre o sector…"
+                     autocomplete="off" spellcheck="false" aria-autocomplete="list"
+                     aria-controls="buscar-lista">
+              <ul class="buscar-lista" id="buscar-lista" hidden role="listbox"></ul>
+              <input type="hidden" id="sel-carrera">
+            </div>
           </div>
           <button type="submit" class="btn-analizar">Analizar</button>
           <p class="consulta-pie">Informe ejecutivo · 4 indicadores · recomendación</p>
@@ -81,32 +88,8 @@
       <p class="informe-meta"><span id="inf-region"></span> · <span id="inf-actualizado"></span></p>
     </header>
 
-    <!-- 2 · Indicadores principales -->
-    <div class="kpi-grid" role="list">
-      <div class="kpi anim" style="--d:1" role="listitem">
-        <p class="kpi-label">Vacantes y señales de demanda</p>
-        <p class="kpi-valor" id="kpi-vacantes">—</p>
-        <p class="kpi-sub" id="kpi-vacantes-sub">sector · nivel nacional</p>
-      </div>
-      <div class="kpi anim" style="--d:2" role="listitem">
-        <p class="kpi-label">Matrícula regional</p>
-        <p class="kpi-valor" id="kpi-matricula">—</p>
-        <p class="kpi-sub" id="kpi-matricula-sub">estudiantes en la región</p>
-      </div>
-      <div class="kpi anim" style="--d:3" role="listitem">
-        <p class="kpi-label">Nivel de brecha</p>
-        <p class="kpi-valor kpi-valor-texto" id="kpi-brecha">—</p>
-        <p class="kpi-sub" id="kpi-brecha-sub">en esta región</p>
-      </div>
-      <div class="kpi anim" style="--d:4" role="listitem">
-        <p class="kpi-label">Tendencia</p>
-        <p class="kpi-valor kpi-valor-texto" id="kpi-tendencia">—</p>
-        <p class="kpi-sub" id="kpi-tendencia-sub">demanda del sector, semanal</p>
-      </div>
-    </div>
-
-    <!-- 3 · Estado de la situación -->
-    <div class="estado-banner anim" id="estado-banner" style="--d:5">
+    <!-- 2 · Estado actual (componente dominante) -->
+    <div class="estado-banner anim" id="estado-banner" style="--d:1">
       <span class="estado-punto" aria-hidden="true"></span>
       <div>
         <p class="estado-titulo" id="estado-titulo"></p>
@@ -114,36 +97,46 @@
       </div>
     </div>
 
+    <!-- 3 · Indicadores principales -->
+    <div class="kpi-grid" role="list">
+      <div class="kpi anim" style="--d:2" role="listitem">
+        <p class="kpi-label">Vacantes y señales de demanda</p>
+        <p class="kpi-valor" id="kpi-vacantes">—</p>
+        <p class="kpi-sub" id="kpi-vacantes-sub">sector · nivel nacional</p>
+      </div>
+      <div class="kpi anim" style="--d:3" role="listitem">
+        <p class="kpi-label">Matrícula regional</p>
+        <p class="kpi-valor" id="kpi-matricula">—</p>
+        <p class="kpi-sub" id="kpi-matricula-sub">estudiantes en la región</p>
+      </div>
+      <div class="kpi anim" style="--d:4" role="listitem">
+        <p class="kpi-label">Nivel de brecha</p>
+        <p class="kpi-valor kpi-valor-texto" id="kpi-brecha">—</p>
+        <p class="kpi-sub" id="kpi-brecha-sub">en esta región</p>
+      </div>
+    </div>
+
     <!-- 4 · Resumen ejecutivo -->
-    <article class="card card-resumen anim" style="--d:6">
+    <article class="card card-resumen anim" style="--d:5">
       <h2>Resumen ejecutivo</h2>
       <p id="resumen-texto"></p>
     </article>
 
     <!-- 5 · Recomendación -->
-    <article class="card card-recomendacion anim" style="--d:7">
+    <article class="card card-recomendacion anim" style="--d:6">
       <h2>Recomendación para tomadores de decisión</h2>
       <p id="reco-texto"></p>
       <p class="reco-accion" id="reco-accion" hidden></p>
     </article>
 
-    <div class="dos-columnas anim" style="--d:8">
-      <!-- 6 · Contexto nacional -->
-      <article class="card">
-        <h2>Contexto nacional</h2>
-        <dl class="contexto-lista" id="contexto-lista"></dl>
-      </article>
+    <!-- 6 · Contexto nacional -->
+    <section class="contexto-seccion anim" style="--d:7">
+      <h2>Contexto nacional</h2>
+      <div class="contexto-lista" id="contexto-lista"></div>
+    </section>
 
-      <!-- 7 · Tendencia -->
-      <article class="card">
-        <h2>Tendencia de la demanda</h2>
-        <div id="tendencia-chart" class="tendencia-chart"></div>
-        <p class="tendencia-nota" id="tendencia-nota"></p>
-      </article>
-    </div>
-
-    <!-- 8 · Información secundaria -->
-    <div class="acordeones anim" style="--d:9">
+    <!-- 7 · Información secundaria -->
+    <div class="acordeones anim" style="--d:8">
       <details class="acordeon">
         <summary>Oferta formativa en la región</summary>
         <div class="acordeon-cuerpo" id="acc-oferta"></div>

@@ -40,13 +40,13 @@ function calcularEstado(nivelSector, matRegional, promedio, sinDemanda) {
   }
   const DEF = {
     critica:    { emoji: "🔴", titulo: "Brecha crítica",   corto: "Crítica",
-      frase: "La región no forma este perfil y el sector presenta alta demanda de talento." },
+      frase: "La región no forma este perfil y el sector presenta alta demanda de talento a nivel nacional." },
     alta:       { emoji: "🟠", titulo: "Brecha alta",      corto: "Alta",
-      frase: "La formación regional es insuficiente frente a las señales de demanda del sector." },
+      frase: "La formación regional es insuficiente frente a las señales de demanda del sector a nivel nacional." },
     moderada:   { emoji: "🟡", titulo: "Brecha moderada",  corto: "Moderada",
-      frase: "Existe oferta formativa, pero el sector mantiene demanda de talento sin cubrir." },
+      frase: "Existe oferta formativa, pero el sector mantiene demanda de talento sin cubrir a nivel nacional." },
     suficiente: { emoji: "🟢", titulo: "Oferta suficiente", corto: "Suficiente",
-      frase: "La oferta formativa regional aparece alineada con las señales de demanda actuales." },
+      frase: "La oferta formativa regional aparece alineada con las señales de demanda del sector a nivel nacional." },
   };
   if (sinDemanda) {
     DEF.alta.frase = "La región no registra formación en esta carrera (evaluación basada solo en oferta formativa).";
@@ -56,22 +56,14 @@ function calcularEstado(nivelSector, matRegional, promedio, sinDemanda) {
   return { clave, ...DEF[clave] };
 }
 
-/* ─── Tendencia de demanda del sector (serie semanal) ──────────── */
-function calcularTendencia(sectorId) {
+/* ─── Registro de demanda del sector ─────────────────────────────
+   ponytail: los registros del pipeline no se comparan entre sí;
+   solo se usa el último valor disponible del sector. */
+function ultimoRegistro(sectorId) {
   const serie = (DATA.historico || [])
     .map((h) => ({ fecha: h.fecha, v: h.demanda[sectorId] }))
     .filter((p) => p.v != null);
-  if (serie.length < 2) {
-    return { serie, flecha: "→", texto: "Estable", detalle: "serie semanal recién iniciada", pct: null };
-  }
-  const prev = serie[serie.length - 2].v, ult = serie[serie.length - 1].v;
-  const pct = prev === 0 ? null : Math.round(((ult - prev) / prev) * 100);
-  if (pct == null || Math.abs(pct) < 5) {
-    return { serie, flecha: "→", texto: "Estable", detalle: "sin variación relevante esta semana", pct };
-  }
-  return pct > 0
-    ? { serie, flecha: "↑", texto: `Creciente +${pct}%`, detalle: "respecto a la semana anterior", pct }
-    : { serie, flecha: "↓", texto: `Decreciente ${pct}%`, detalle: "respecto a la semana anterior", pct };
+  return { ult: serie.length ? serie[serie.length - 1] : null };
 }
 
 /* ─── Resumen ejecutivo por plantillas (sin IA) ────────────────── */
@@ -87,11 +79,11 @@ function generarResumen(c, region, sector, estado, matR, tend, sinDemanda) {
     const s3sd = c.n_regiones_con_oferta > 0
       ? `A nivel nacional, ${c.n_regiones_con_oferta} de 16 regiones imparten esta carrera.`
       : `Esta carrera casi no registra oferta formativa en el país.`;
-    return `${s1sd} El registro semanal de demanda para el sector ${sector.label} aún no está disponible, por lo que esta evaluación se basa únicamente en la oferta formativa (Mineduc 2025). ${s3sd}`;
+    return `${s1sd} El pipeline aún no registra señales de demanda para el sector ${sector.label}, por lo que esta evaluación se basa únicamente en la oferta formativa (Mineduc 2025). ${s3sd}`;
   }
 
   const s1 = {
-    critica: `${region.nombre_largo} no registra matrícula en ${c.nombre}, mientras el sector ${sector.label} presenta brecha de talento a nivel nacional con ${fmt(sector.demanda)} vacantes y señales de demanda activas.`,
+    critica: `${region.nombre_largo} no registra matrícula en ${c.nombre}, mientras el sector ${sector.label} presenta brecha de talento a nivel nacional (${fmt(sector.demanda)} ${sector.demanda === 1 ? "señal de demanda detectada" : "vacantes y señales de demanda detectadas"} en la última actualización).`,
     alta: `La formación de ${c.nombre} en ${region.nombre_largo} (${fmt(matR)} matriculados) está por debajo del promedio regional del país (${fmt(prom)}), mientras el sector ${sector.label} mantiene una brecha de talento a nivel nacional.`,
     moderada: matR >= prom
       ? `${region.nombre_largo} concentra una matrícula de ${c.nombre} sobre el promedio regional del país (${fmt(matR)} vs ${fmt(prom)}), pero el sector ${sector.label} aún registra demanda de talento sin cubrir a nivel nacional.`
@@ -99,11 +91,11 @@ function generarResumen(c, region, sector, estado, matR, tend, sinDemanda) {
     suficiente: `La oferta formativa de ${c.nombre} en ${region.nombre_largo} (${fmt(matR)} matriculados) aparece alineada con las señales de demanda actuales del sector ${sector.label}.`,
   }[estado.clave];
 
-  const s2 = tend.pct != null && Math.abs(tend.pct) >= 5
-    ? (tend.pct > 0
-      ? `La demanda del sector creció ${tend.pct}% la última semana.`
-      : `La demanda del sector se redujo ${Math.abs(tend.pct)}% la última semana.`)
-    : `Las señales de demanda del sector se han mantenido estables en el registro semanal.`;
+  /* Solo se reporta el último valor del pipeline; los registros
+     no se comparan entre sí (la nota metodológica lo explica). */
+  const s2 = tend.ult
+    ? `El último registro disponible del sector a nivel nacional es de ${fmt(tend.ult.v)} vacantes y señales de demanda (${fechaCorta(tend.ult.fecha)}).`
+    : `El pipeline aún no registra señales de demanda para el sector ${sector.label}.`;
 
   const s3 = c.n_regiones_con_oferta > 0
     ? `A nivel nacional, ${c.n_regiones_con_oferta} de 16 regiones imparten esta carrera.`
@@ -117,11 +109,61 @@ function generarRecomendacion(c, region, sector, estado) {
   const base = {
     critica: `Se recomienda evaluar la apertura de programas de ${c.nombre} en la región —vía CFT, IP o convenios con universidades que ya la imparten en otras regiones— y, en el corto plazo, mecanismos de atracción de talento (becas de movilidad, incentivos de contratación SENCE/CORFO).`,
     alta: `Se recomienda evaluar el aumento de cupos de ${c.nombre} en las instituciones que ya la imparten en la región y fortalecer programas de capacitación y reconversión laboral vinculados al sector ${sector.label}.`,
-    moderada: `Se recomienda monitorear la evolución semanal de la demanda y fortalecer la vinculación entre las instituciones formadoras de la región y los empleadores del sector ${sector.label} (prácticas, titulación conjunta, formación dual).`,
+    moderada: `Se recomienda monitorear la evolución de la demanda del sector y fortalecer la vinculación entre las instituciones formadoras de la región y los empleadores del sector ${sector.label} (prácticas, titulación conjunta, formación dual).`,
     suficiente: `La oferta actual no requiere intervención inmediata. Se recomienda mantener los cupos vigentes y revisar este informe periódicamente para detectar cambios en la demanda.`,
   }[estado.clave];
   return base;
 }
+
+/* ─── Mapa real de Chile (GeoJSON de regiones) ──────────────
+   Se usa el mismo dataset público que el mapa de referencia
+   (fcortes/Chile-GeoJSON). geoNameToKey() traduce el nombre
+   de cada polígono al id de región que ya usa esta app. */
+const GEO_URL = "https://raw.githubusercontent.com/fcortes/Chile-GeoJSON/master/Regional.geojson";
+
+const GEO_REGION_MAP = {
+  "arica":         "arica",
+  "parinacota":    "arica",
+  "tarapaca":      "tarapaca",
+  "antofagasta":   "antofagasta",
+  "atacama":       "atacama",
+  "coquimbo":      "coquimbo",
+  "valparaiso":    "valparaiso",
+  "o'higgins":     "ohiggins",
+  "ohiggins":      "ohiggins",
+  "libertador":    "ohiggins",
+  "maule":         "maule",
+  "nuble":         "nuble",
+  "biobio":        "biobio",
+  "araucania":     "araucania",
+  "los rios":      "losrios",
+  "los lagos":     "loslagos",
+  "aysen":         "aysen",
+  "magallanes":    "magallanes",
+  "metropolitana": "metropolitana",
+  "santiago":      "metropolitana",
+};
+
+function geoNameToKey(name) {
+  if (!name) return null;
+  const n = name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  for (const [kw, key] of Object.entries(GEO_REGION_MAP)) {
+    const kn = kw.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    if (n.includes(kn)) return key;
+  }
+  return null;
+}
+
+const ESTADO_COLOR = {
+  suficiente: "#10B981",
+  moderada:   "#EAB308",
+  alta:       "#F97316",
+  critica:    "#EF4444",
+};
+
+const MAPA_BOUNDS = [[-56, -76], [-17, -66]];
+let _mapaGeoJSON = null;   // cache del GeoJSON (se descarga una sola vez)
+let _mapaLeafletMap = null;
 
 /* ═══════════════ CARGA E INICIALIZACIÓN ═══════════════ */
 
@@ -169,6 +211,18 @@ async function init() {
     } catch (e) { /* clipboard no disponible */ }
   });
 
+  const accRegionesDetails = $("acc-regiones").closest("details");
+  if (accRegionesDetails) {
+    accRegionesDetails.addEventListener("toggle", () => {
+      if (accRegionesDetails.open && _mapaLeafletMap) {
+        setTimeout(() => {
+          _mapaLeafletMap.invalidateSize();
+          _mapaLeafletMap.fitBounds(MAPA_BOUNDS, { padding: [8, 8] });
+        }, 50);
+      }
+    });
+  }
+
   window.addEventListener("popstate", aplicarURL);
 
   /* Al imprimir, abrir los acordeones para que el PDF esté completo */
@@ -195,6 +249,8 @@ function aplicarURL() {
       DATA.carreras.some((c) => c.id === carrera)) {
     $("sel-region").value = region;
     $("sel-carrera").value = carrera;
+    const cData = DATA.carreras.find(x => x.id === carrera);
+    if (cData) $("buscar-carrera").value = cData.nombre;
     renderInforme(region, carrera);
   } else {
     mostrarInicio();
@@ -209,20 +265,102 @@ function poblarSelectores() {
     o.textContent = r.nombre_largo;
     selR.appendChild(o);
   }
-  const selC = $("sel-carrera");
+  initBuscador();
+}
+
+/* ─── Buscador de carreras con teclado ─────────────────────── */
+function initBuscador() {
+  const input = $("buscar-carrera");
+  const lista = $("buscar-lista");
+  const hidden = $("sel-carrera");
+  let idx = -1;
+
+  /* Índice plano de todas las carreras con su sector */
+  const items = [];
   for (const sid of ORDEN_SECTORES) {
-    const carreras = DATA.carreras.filter((c) => c.sector === sid);
-    if (!carreras.length) continue;
-    const g = document.createElement("optgroup");
-    g.label = DATA.sectores[sid].label;
-    for (const c of carreras) {
-      const o = document.createElement("option");
-      o.value = c.id;
-      o.textContent = c.nombre;
-      g.appendChild(o);
+    for (const c of DATA.carreras.filter(x => x.sector === sid)) {
+      items.push({ id: c.id, nombre: c.nombre, sector: DATA.sectores[sid].label });
     }
-    selC.appendChild(g);
   }
+  /* Agregar carreras de sectores no listados en ORDEN_SECTORES (futuro) */
+  for (const c of DATA.carreras) {
+    if (!items.some(i => i.id === c.id)) {
+      items.push({ id: c.id, nombre: c.nombre, sector: DATA.sectores[c.sector]?.label || c.sector });
+    }
+  }
+
+  function filtrar(q) {
+    if (!q.trim()) return items;
+    const t = q.trim().toLowerCase();
+    return items.filter(i => i.nombre.toLowerCase().includes(t) || i.sector.toLowerCase().includes(t));
+  }
+
+  function resaltarActivo() {
+    lista.querySelectorAll("li").forEach((li, i) => li.classList.toggle("activo", i === idx));
+  }
+
+  function mostrarLista(q) {
+    const matches = filtrar(q).slice(0, 80);
+    idx = -1;
+    if (!matches.length) { lista.hidden = true; return; }
+    lista.innerHTML = matches.map((m, i) =>
+      `<li role="option" data-id="${esc(m.id)}" data-i="${i}">
+         <span class="bl-nombre">${esc(m.nombre)}</span>
+         <span class="bl-sector">${esc(m.sector)}</span>
+       </li>`
+    ).join("");
+    lista.hidden = false;
+  }
+
+  function seleccionar(id, nombre) {
+    hidden.value = id;
+    input.value = nombre;
+    lista.hidden = true;
+    idx = -1;
+  }
+
+  input.addEventListener("input", () => {
+    hidden.value = ""; // invalidate selection while typing
+    mostrarLista(input.value);
+  });
+
+  input.addEventListener("focus", () => {
+    if (!hidden.value) mostrarLista(input.value);
+  });
+
+  input.addEventListener("keydown", (e) => {
+    const lis = [...lista.querySelectorAll("li")];
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      idx = Math.min(idx + 1, lis.length - 1);
+      resaltarActivo();
+      lis[idx]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      idx = Math.max(idx - 1, 0);
+      resaltarActivo();
+      lis[idx]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      if (idx >= 0 && lis[idx]) {
+        e.preventDefault();
+        const li = lis[idx];
+        seleccionar(li.dataset.id, li.querySelector(".bl-nombre").textContent);
+      }
+    } else if (e.key === "Escape") {
+      lista.hidden = true;
+    }
+  });
+
+  lista.addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li");
+    if (!li) return;
+    e.preventDefault(); // evita blur antes del click
+    seleccionar(li.dataset.id, li.querySelector(".bl-nombre").textContent);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".buscar-wrap")) lista.hidden = true;
+  });
 }
 
 function diasDesde(iso) {
@@ -232,7 +370,7 @@ function diasDesde(iso) {
 
 function textoActualizado() {
   const d = diasDesde(DATA.fuente_actualizada);
-  if (d == null) return "Actualización semanal";
+  if (d == null) return "Actualización periódica";
   if (d === 0) return "Actualizado hoy";
   if (d === 1) return "Actualizado ayer";
   return `Actualizado hace ${d} días`;
@@ -244,8 +382,8 @@ function mostrarFrescura() {
   b.hidden = false;
   const d = diasDesde(DATA.fuente_actualizada);
   $("inicio-nota").textContent = d == null
-    ? "La información se actualiza automáticamente cada semana."
-    : `La información se actualiza automáticamente cada semana · ${textoActualizado()}.`;
+    ? "La información se actualiza automáticamente de forma periódica."
+    : `La información se actualiza automáticamente de forma periódica · ${textoActualizado()}.`;
 }
 
 function mostrarInicio() {
@@ -268,7 +406,7 @@ function renderInforme(regionId, carreraId) {
   const matR = regData ? regData.matricula : 0;
   const sinDemanda = sector.demanda == null;
   const estado = calcularEstado(sector.nivel_brecha, matR, c.promedio_regional, sinDemanda);
-  const tend = calcularTendencia(c.sector);
+  const tend = ultimoRegistro(c.sector);
 
   document.title = `${c.nombre} · ${region.nombre} — Talento País`;
 
@@ -281,20 +419,13 @@ function renderInforme(regionId, carreraId) {
   /* 2 · KPIs */
   $("kpi-vacantes").textContent = sinDemanda ? "s/d" : fmt(sector.demanda);
   $("kpi-vacantes-sub").textContent = sinDemanda
-    ? "sin registro de demanda esta semana"
+    ? "sin registro de demanda en la última actualización"
     : `sector ${sector.demanda_sector} · nivel nacional`;
   $("kpi-matricula").textContent = fmt(matR);
   $("kpi-matricula-sub").textContent = `matriculados en la región (Mineduc 2025)`;
-  $("kpi-brecha").textContent = `${estado.emoji} ${estado.corto}`;
+  $("kpi-brecha").textContent = estado.corto;
+  $("kpi-brecha").dataset.estado = estado.clave;
   $("kpi-brecha-sub").textContent = "en esta región";
-  if (sinDemanda) {
-    $("kpi-tendencia").textContent = "s/d";
-    $("kpi-tendencia-sub").textContent = "sin registro de demanda del sector";
-  } else {
-    $("kpi-tendencia").textContent = `${tend.flecha} ${tend.texto}`;
-    $("kpi-tendencia-sub").textContent = tend.detalle;
-  }
-
   /* 3 · Estado */
   const banner = $("estado-banner");
   banner.className = `estado-banner e-${estado.clave}`;
@@ -315,10 +446,7 @@ function renderInforme(regionId, carreraId) {
   /* 6 · Contexto nacional */
   renderContexto(c, region, sector, estado, matR);
 
-  /* 7 · Tendencia */
-  renderTendencia(tend, sector);
-
-  /* 8 · Acordeones */
+  /* 7 · Acordeones */
   renderAcordeones(c, region, sector, regData, sinDemanda);
 
   document.querySelectorAll(".acordeon").forEach((d) => (d.open = false));
@@ -331,72 +459,36 @@ function renderInforme(regionId, carreraId) {
 }
 
 function renderContexto(c, region, sector, estado, matR) {
-  const items = [
-    {
-      dt: "Matrícula de la carrera",
-      dd: `${region.nombre}: <strong>${fmt(matR)}</strong><span class="vs">Promedio regional del país: ${fmt(c.promedio_regional)}</span>`,
-    },
-    {
-      dt: "Nivel de brecha",
-      dd: `${region.nombre}: <strong>${esc(estado.corto)}</strong><span class="vs">Sector a nivel nacional: ${esc(nivelATexto(sector.nivel_brecha))}</span>`,
-    },
-    {
-      dt: "Cobertura territorial",
-      dd: `<strong>${c.n_regiones_con_oferta} de 16</strong> regiones<span class="vs">imparten esta carrera</span>`,
-    },
-    {
-      dt: "Matrícula nacional",
-      dd: `<strong>${fmt(c.matricula_nacional)}</strong><span class="vs">estudiantes en todo Chile</span>`,
-    },
-  ];
-  $("contexto-lista").innerHTML = items
-    .map((i) => `<div class="contexto-item"><dt>${i.dt}</dt><dd>${i.dd}</dd></div>`)
-    .join("");
+  const escala = Math.max(matR, c.promedio_regional) * 1.3 || 1;
+  const pctMat = Math.round(Math.min(100, (matR / escala) * 100));
+  const pctCob = Math.round((c.n_regiones_con_oferta / 16) * 100);
+  $("contexto-lista").innerHTML = `
+    <div class="ctx-bloque">
+      <p class="ctx-label">Matrícula en la región</p>
+      <p class="ctx-valor">${fmt(matR)}</p>
+      <div class="ctx-barra"><div class="ctx-barra-fill" style="width:${pctMat}%"></div></div>
+      <p class="ctx-compare">Promedio regional del país: ${fmt(c.promedio_regional)}</p>
+    </div>
+    <div class="ctx-bloque">
+      <p class="ctx-label">Cobertura territorial</p>
+      <p class="ctx-valor">${c.n_regiones_con_oferta} <span class="ctx-de">de 16</span></p>
+      <div class="ctx-barra"><div class="ctx-barra-fill" style="width:${pctCob}%"></div></div>
+      <p class="ctx-compare">regiones imparten esta carrera</p>
+    </div>
+    <div class="ctx-bloque">
+      <p class="ctx-label">Brecha en la región</p>
+      <span class="ctx-badge e-${esc(estado.clave)}">${esc(estado.corto)}</span>
+      <p class="ctx-compare">Sector a nivel nacional: ${esc(nivelATexto(sector.nivel_brecha))}</p>
+    </div>
+    <div class="ctx-bloque">
+      <p class="ctx-label">Matrícula nacional</p>
+      <p class="ctx-valor">${fmt(c.matricula_nacional)}</p>
+      <p class="ctx-compare">estudiantes en todo Chile</p>
+    </div>`;
 }
 
 function nivelATexto(n) {
   return n === "ALTA" ? "Alta" : n === "MEDIA" ? "Media" : n === "BAJA" ? "Baja" : "Sin datos";
-}
-
-function renderTendencia(tend, sector) {
-  const cont = $("tendencia-chart");
-  const nota = $("tendencia-nota");
-  const serie = tend.serie;
-
-  if (!serie.length) {
-    cont.innerHTML = `<p class="sin-datos">Sin datos de demanda para este sector.</p>`;
-    nota.textContent = "";
-    return;
-  }
-  if (serie.length === 1) {
-    cont.innerHTML = `<p class="sin-datos" style="padding:18px 0;">Registro actual: <strong>${fmt(serie[0].v)}</strong> vacantes y señales de demanda (${fechaCorta(serie[0].fecha)}).</p>`;
-    nota.textContent = "La serie semanal comenzó a registrarse recientemente; el gráfico se construirá de forma automática con cada actualización.";
-    return;
-  }
-
-  /* Línea SVG minimalista */
-  const W = 400, H = 150, PAD = { t: 16, r: 14, b: 26, l: 38 };
-  const vals = serie.map((p) => p.v);
-  const vMin = Math.min(...vals), vMax = Math.max(...vals);
-  const span = vMax - vMin || 1;
-  const x = (i) => PAD.l + (i * (W - PAD.l - PAD.r)) / (serie.length - 1);
-  const y = (v) => PAD.t + (H - PAD.t - PAD.b) * (1 - (v - vMin) / span);
-  const pts = serie.map((p, i) => `${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
-  const ult = serie[serie.length - 1];
-
-  cont.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución semanal de la demanda del sector">
-      <line x1="${PAD.l}" y1="${y(vMin)}" x2="${W - PAD.r}" y2="${y(vMin)}" stroke="#E2E8F0" stroke-width="1"/>
-      <line x1="${PAD.l}" y1="${y(vMax)}" x2="${W - PAD.r}" y2="${y(vMax)}" stroke="#E2E8F0" stroke-width="1"/>
-      <text x="${PAD.l - 6}" y="${y(vMax) + 4}" text-anchor="end" font-size="11" fill="#64748b">${vMax}</text>
-      <text x="${PAD.l - 6}" y="${y(vMin) + 4}" text-anchor="end" font-size="11" fill="#64748b">${vMin}</text>
-      <polyline points="${pts}" fill="none" stroke="#0891B2" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-      ${serie.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="3" fill="#0891B2"/>`).join("")}
-      <circle cx="${x(serie.length - 1)}" cy="${y(ult.v)}" r="5" fill="#0B3D8A"/>
-      <text x="${PAD.l}" y="${H - 6}" font-size="11" fill="#64748b">${fechaCorta(serie[0].fecha)}</text>
-      <text x="${W - PAD.r}" y="${H - 6}" text-anchor="end" font-size="11" fill="#64748b">${fechaCorta(ult.fecha)}</text>
-    </svg>`;
-  nota.textContent = `Vacantes y señales de demanda del sector ${sector.label} registradas semana a semana (nivel nacional).`;
 }
 
 function fechaCorta(iso) {
@@ -419,38 +511,117 @@ function renderAcordeones(c, region, sector, regData, sinDemanda) {
     $("acc-oferta").innerHTML = `<p class="sin-datos">Ninguna institución de ${esc(region.nombre_largo)} registra matrícula en ${esc(c.nombre)} (Mineduc 2025). Las regiones que sí la imparten aparecen en «Comparación entre regiones».</p>`;
   }
 
-  /* Comparación entre regiones (top 6 + la consultada) */
-  const ranking = DATA.regiones
-    .map((r) => ({ r, m: c.regiones[r.id] ? c.regiones[r.id].matricula : 0 }))
-    .sort((a, b) => b.m - a.m);
-  const top = ranking.slice(0, 6);
-  if (!top.some((t) => t.r.id === region.id)) {
-    top.push(ranking.find((t) => t.r.id === region.id));
-  }
-  $("acc-regiones").innerHTML = `
-    <table class="tabla-simple">
-      <thead><tr><th>Región</th><th class="num">Matriculados</th></tr></thead>
-      <tbody>${top
-        .map((t) => `<tr class="${t.r.id === region.id ? "destacada" : ""}"><td>${esc(t.r.nombre_largo)}</td><td class="num">${fmt(t.m)}</td></tr>`)
-        .join("")}</tbody>
-    </table>
-    <p style="margin-top:10px;" class="sin-datos">Promedio regional del país: ${fmt(c.promedio_regional)} matriculados.</p>`;
+  renderMapaRegiones(c, region.id);
 
   /* Diagnóstico del sector */
   const demandaPrestada = sector.demanda_sector && sector.demanda_sector !== sector.label;
   $("acc-sector").innerHTML = sector.diagnostico
     ? `${demandaPrestada ? `<p class="sin-datos">Las señales de demanda de este informe provienen del análisis nacional del sector «${esc(sector.demanda_sector)}», que agrupa a ${esc(sector.label)}.</p>` : ""}
        <p>${esc(sector.diagnostico)}</p>
-       <p class="sin-datos">Demanda registrada esta semana: ${fmt(sector.demanda)} vacantes y señales de demanda a nivel nacional.</p>`
-    : `<p class="sin-datos">El pipeline semanal aún no registra señales de demanda específicas para ${esc(sector.label)}. La evaluación de este informe se basa únicamente en la oferta formativa (Mineduc 2025).</p>`;
+       <p class="sin-datos">Demanda registrada en la última actualización: ${fmt(sector.demanda)} vacantes y señales de demanda a nivel nacional.</p>`
+    : `<p class="sin-datos">El pipeline aún no registra señales de demanda específicas para ${esc(sector.label)}. La evaluación de este informe se basa únicamente en la oferta formativa (Mineduc 2025).</p>`;
 
   /* Metodología */
   $("acc-metodo").innerHTML = `
-    <p><strong>Fuentes.</strong> Matrícula: Mineduc — Matrícula en Educación Superior 2025 (dato oficial, por carrera, institución y región). Demanda: pipeline semanal automatizado que recopila ofertas laborales, licitaciones de Mercado Público y concursos ANID asociados a cada sector estratégico.</p>
+    <p><strong>Fuentes.</strong> Matrícula: Mineduc — Matrícula en Educación Superior 2025 (dato oficial, por carrera, institución y región). Demanda: pipeline automatizado que recopila ofertas laborales, licitaciones de Mercado Público y concursos ANID asociados a cada sector estratégico.</p>
     <p><strong>Qué significa "vacantes y señales de demanda".</strong> Es el número de oportunidades activas detectadas para el sector a nivel <em>nacional</em>. Hoy la demanda no está desagregada por carrera ni por región; por eso se presenta como señal sectorial y así debe interpretarse.</p>
     <p><strong>Cómo se calcula el estado.</strong> Reglas fijas y auditables (sin IA): se combina el nivel de brecha nacional del sector con la matrícula de la carrera en la región comparada contra el promedio regional del país. Ejemplo: sector con brecha alta + región sin matrícula = brecha crítica.</p>
-    <p><strong>Limitaciones.</strong> Los datos de demanda son señales, no un censo de vacantes; la matrícula corresponde al año 2025 y se actualiza anualmente; las recomendaciones son orientativas y no reemplazan estudios sectoriales en profundidad.</p>
+    <p><strong>Limitaciones.</strong> Los datos de demanda son señales, no un censo de vacantes; la serie histórica de demanda está en fase inicial y sus variaciones deben interpretarse con cautela; la matrícula corresponde al año 2025 y se actualiza anualmente; las recomendaciones son orientativas y no reemplazan estudios sectoriales en profundidad.</p>
     <p class="sin-datos">Última actualización del pipeline: ${DATA.fuente_actualizada ? esc(fechaCorta(DATA.fuente_actualizada.slice(0, 10))) : "s/d"} · Informe generado automáticamente.</p>`;
+}
+
+/* ─── Estado de brecha para una región y carrera dadas ─────── */
+function estadoParaRegion(c, regionId) {
+  const regData = c.regiones[regionId];
+  const matR = regData ? regData.matricula : 0;
+  const sector = DATA.sectores[c.sector];
+  const sinDemanda = sector.demanda == null;
+  return calcularEstado(sector.nivel_brecha, matR, c.promedio_regional, sinDemanda);
+}
+
+/* ─── Mapa interactivo de Chile por brecha (mapa real, Leaflet) ─ */
+async function renderMapaRegiones(c, currentRegionId) {
+  const cont = $("acc-regiones");
+
+  const leyendaItems = [
+    ["critica",    "Brecha crítica"],
+    ["alta",       "Brecha alta"],
+    ["moderada",   "Brecha moderada"],
+    ["suficiente", "Oferta suficiente"],
+  ].map(([cl, label]) =>
+    `<span class="ley-item"><span class="ley-punto e-${cl}"></span>${label}</span>`
+  ).join("");
+
+  cont.innerHTML = `
+    <div class="mapa-contenedor">
+      <div class="mapa-leaflet" id="mapa-leaflet" role="img" aria-label="Mapa de Chile · ${esc(c.nombre)}"></div>
+      <div class="mapa-leyenda">${leyendaItems}</div>
+      <p class="mapa-nota">Haz clic en una región para cargar su informe. También puedes usar el selector de región de arriba. La región actual aparece resaltada.</p>
+    </div>`;
+
+  if (!window.L) return;
+
+  if (_mapaLeafletMap) { _mapaLeafletMap.remove(); _mapaLeafletMap = null; }
+
+  const mapEl = document.getElementById("mapa-leaflet");
+  _mapaLeafletMap = L.map(mapEl, {
+    zoomControl: false,
+    scrollWheelZoom: false,
+    dragging: false,
+    doubleClickZoom: false,
+    attributionControl: false,
+  });
+
+  try {
+    if (!_mapaGeoJSON) {
+      const resp = await fetch(GEO_URL);
+      _mapaGeoJSON = await resp.json();
+    }
+
+    L.geoJSON(_mapaGeoJSON, {
+      style: feature => {
+        const shapeName = feature.properties.Region || feature.properties.shapeName || feature.properties.NAME_1 || "";
+        const key = geoNameToKey(shapeName);
+        const e = key ? estadoParaRegion(c, key) : null;
+        const actual = key === currentRegionId;
+        return {
+          fillColor: e ? ESTADO_COLOR[e.clave] : "#94a3b8",
+          fillOpacity: actual ? 0.9 : 0.65,
+          color: actual ? "#06214D" : "rgba(255,255,255,0.8)",
+          weight: actual ? 3 : 1,
+        };
+      },
+      onEachFeature(feature, layer) {
+        const shapeName = feature.properties.Region || feature.properties.shapeName || feature.properties.NAME_1 || "";
+        const key = geoNameToKey(shapeName);
+        const r = key && DATA.regiones.find(x => x.id === key);
+        if (!r) return;
+        const regData = c.regiones[key];
+        const matTxt = regData ? fmt(regData.matricula) + " matriculados" : "Sin oferta formativa";
+        const e = estadoParaRegion(c, key);
+
+        layer.bindTooltip(
+          `<strong>${esc(r.nombre_largo)}</strong><br>${esc(matTxt)}<br>Brecha: <strong>${esc(e.corto)}</strong>`,
+          { className: "mapa-tooltip-leaflet", sticky: true }
+        );
+
+        layer.on("click", () => {
+          $("sel-region").value = key;
+          const url = `?region=${key}&carrera=${c.id}`;
+          history.pushState({ region: key, carrera: c.id }, "", url);
+          renderInforme(key, c.id);
+        });
+        layer.on("mouseover", function () { this.setStyle({ fillOpacity: 0.9 }); });
+        layer.on("mouseout",  function () { this.setStyle({ fillOpacity: key === currentRegionId ? 0.9 : 0.65 }); });
+      },
+    }).addTo(_mapaLeafletMap);
+
+    _mapaLeafletMap.fitBounds(MAPA_BOUNDS, { padding: [8, 8] });
+  } catch (e) {
+    mapEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#8B9EB5;font-size:13px;">No se pudo cargar el mapa. Verifica tu conexión.</div>';
+  }
+
+  setTimeout(() => { if (_mapaLeafletMap) _mapaLeafletMap.invalidateSize(); }, 200);
 }
 
 init();
