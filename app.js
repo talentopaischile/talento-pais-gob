@@ -17,8 +17,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
 
 /* Orden fijo de sectores en el selector */
 const ORDEN_SECTORES = [
-  "ia_tecnologia", "energias_renovables", "litio", "cobre_otros_minerales",
-  "astronomia", "oceanografia", "asia_pacifico", "agroindustria", "vino",
+  "construccion", "ia_tecnologia", "energias_renovables", "litio",
+  "cobre_otros_minerales", "astronomia", "oceanografia", "asia_pacifico",
+  "agroindustria", "vino",
 ];
 
 /* ─── Motor de reglas: estado (semáforo) ─────────────────────────
@@ -132,6 +133,7 @@ async function init() {
   } catch (e) {
     $("error-carga").hidden = false;
     $("vista-inicio").hidden = true;
+    document.body.classList.remove("modo-hero");
     return;
   }
 
@@ -249,6 +251,9 @@ function mostrarFrescura() {
 function mostrarInicio() {
   $("vista-informe").hidden = true;
   $("vista-inicio").hidden = false;
+  document.body.classList.add("modo-hero");
+  const v = $("hero-video");
+  if (v && v.paused) v.play().catch(() => {});
   document.title = "Talento País — Informe Ejecutivo Regional";
   window.scrollTo(0, 0);
 }
@@ -319,6 +324,9 @@ function renderInforme(regionId, carreraId) {
   document.querySelectorAll(".acordeon").forEach((d) => (d.open = false));
   $("vista-inicio").hidden = true;
   $("vista-informe").hidden = false;
+  document.body.classList.remove("modo-hero");
+  const v = $("hero-video");
+  if (v && !v.paused) v.pause();
   window.scrollTo(0, 0);
 }
 

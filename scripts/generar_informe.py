@@ -56,18 +56,20 @@ REGION_POR_SEDE = {sede: rid for rid, _, _, sede in REGIONES}
 N_REGIONES = len(REGIONES)
 
 # ─── Sectores estratégicos ───────────────────────────────────────────────────
-# demanda_de: sector de brechas.csv del que toma demanda/nivel (los datos de
-# demanda del pipeline existen a nivel de sector, no de carrera).
+# demanda_de: sectores de brechas.csv de los que puede tomar demanda/nivel,
+# en orden de preferencia (el pipeline entrega demanda por sector, no por
+# carrera). El fallback cubre semanas en que un sector nuevo aún no tiene fila.
 SECTORES = {
-    "ia_tecnologia":         {"label": "IA & Tecnología",        "demanda_de": "IA & Tecnología"},
-    "energias_renovables":   {"label": "Energías Renovables",    "demanda_de": "Energías Renovables"},
-    "litio":                 {"label": "Litio",                  "demanda_de": "Litio & Minería"},
-    "cobre_otros_minerales": {"label": "Cobre & Otros Minerales","demanda_de": "Litio & Minería"},
-    "astronomia":            {"label": "Astronomía",             "demanda_de": "Astronomía"},
-    "oceanografia":          {"label": "Oceanografía",           "demanda_de": "Oceanografía"},
-    "asia_pacifico":         {"label": "Asia-Pacífico",          "demanda_de": "Asia-Pacífico"},
-    "agroindustria":         {"label": "Agroindustria",          "demanda_de": None},
-    "vino":                  {"label": "Vitivinicultura",        "demanda_de": None},
+    "ia_tecnologia":         {"label": "IA & Tecnología",        "demanda_de": ["IA & Tecnología"]},
+    "energias_renovables":   {"label": "Energías Renovables",    "demanda_de": ["Energías Renovables"]},
+    "construccion":          {"label": "Construcción",           "demanda_de": ["Construcción"]},
+    "litio":                 {"label": "Litio",                  "demanda_de": ["Litio & Minería"]},
+    "cobre_otros_minerales": {"label": "Cobre & Otros Minerales","demanda_de": ["Cobre & Otros Minerales", "Litio & Minería"]},
+    "astronomia":            {"label": "Astronomía",             "demanda_de": ["Astronomía"]},
+    "oceanografia":          {"label": "Oceanografía",           "demanda_de": ["Oceanografía"]},
+    "asia_pacifico":         {"label": "Asia-Pacífico",          "demanda_de": ["Asia-Pacífico"]},
+    "agroindustria":         {"label": "Agroindustria",          "demanda_de": ["Agroindustria"]},
+    "vino":                  {"label": "Vitivinicultura",        "demanda_de": ["Vitivinicultura"]},
 }
 
 # ─── Curación de carreras por sector ─────────────────────────────────────────
@@ -87,7 +89,7 @@ CURACION = {
     },
 }
 
-MAX_CARRERAS_POR_SECTOR = 8
+MAX_CARRERAS_POR_SECTOR = 12
 MAX_INSTITUCIONES_POR_REGION = 6
 
 MINUSCULAS = {"de", "del", "en", "la", "las", "los", "y", "e", "a", "el", "con", "para", "su", "o", "u"}
@@ -115,7 +117,8 @@ ACENTOS = {
     "agricola": "agrícola", "ejecucion": "ejecución", "catolica": "católica",
     "concepcion": "concepción", "valparaiso": "valparaíso", "maria": "maría",
     "santisima": "santísima", "aysen": "aysén", "tarapaca": "tarapacá",
-    "biobio": "biobío", "nuble": "ñuble",
+    "biobio": "biobío", "nuble": "ñuble", "construccion": "construcción",
+    "prevencion": "prevención", "topografia": "topografía", "geomensura": "geomensura",
 }
 
 # Siglas institucionales que deben permanecer en mayúsculas
@@ -143,7 +146,8 @@ def titulo_inst(nombre: str) -> str:
 
 def titulo_es(nombre: str) -> str:
     """ALL CAPS → Título en español (conectores en minúscula, tildes restauradas)."""
-    palabras = nombre.strip().lower().split()
+    nombre = re.sub(r"-PE$", " PLAN ESPECIAL", nombre.strip(), flags=re.I)
+    palabras = nombre.lower().split()
     out = []
     for i, p in enumerate(palabras):
         p = ACENTOS.get(p, p)
@@ -259,10 +263,14 @@ def construir_sectores(brechas: list[dict]) -> dict:
     por_label = {b["sector_label"].strip(): b for b in brechas if b.get("sector_label")}
     out = {}
     for sid, cfg in SECTORES.items():
-        b = por_label.get(cfg["demanda_de"]) if cfg["demanda_de"] else None
+        b, label_usado = None, None
+        for label in cfg["demanda_de"]:
+            if label in por_label:
+                b, label_usado = por_label[label], label
+                break
         out[sid] = {
             "label": cfg["label"],
-            "demanda_sector": cfg["demanda_de"],   # de qué sector del pipeline viene la demanda
+            "demanda_sector": label_usado,   # de qué sector del pipeline viene la demanda
             "nivel_brecha": (b or {}).get("nivel_brecha") or None,
             "demanda": int(b["demanda_oportunidades"]) if b and b.get("demanda_oportunidades") else None,
             "matricula_nacional_sector": int(b["matricula_estimada"]) if b and b.get("matricula_estimada") else None,

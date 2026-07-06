@@ -15,10 +15,15 @@ Seleccionar Región → Seleccionar Carrera → Informe Ejecutivo
 
 ```
 index.html / styles.css / app.js   ← frontend estático, sin frameworks ni build
+assets/hero.mp4                    ← video de fondo de la portada (4,6 MB)
 data/informe.json                  ← único archivo de datos, pre-calculado
 scripts/generar_informe.py         ← genera informe.json desde el repo original
 .github/workflows/datos.yml        ← lo regenera cada martes y commitea → Vercel redespliega
 ```
+
+**Sectores** (10): Construcción, IA & Tecnología, Energías Renovables, Litio,
+Cobre & Otros Minerales, Astronomía, Oceanografía, Asia-Pacífico,
+Agroindustria y Vitivinicultura — hasta 12 carreras por sector (102 en total).
 
 Fuente de datos: repo [talento-pais-original](https://github.com/talentopaischile/talento-pais-original)
 (pipeline semanal: Mineduc, ANID, Mercado Público, portales de empleo).

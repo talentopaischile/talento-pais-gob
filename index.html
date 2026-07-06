@@ -7,10 +7,10 @@
 <meta name="description" content="Panel para tomadores de decisión del Estado de Chile: situación laboral y formativa de carreras estratégicas por región, actualizada semanalmente.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="modo-hero">
 
 <header class="topbar">
   <div class="topbar-inner">
@@ -25,29 +25,41 @@
 
 <main id="main">
 
-  <!-- ══════════ VISTA 1 · SELECCIÓN ══════════ -->
+  <!-- ══════════ VISTA 1 · SELECCIÓN (hero con video) ══════════ -->
   <section id="vista-inicio" class="vista">
-    <div class="inicio-wrap">
-      <h1 class="inicio-titulo">¿Cómo está el talento<br>en su región?</h1>
-      <p class="inicio-sub">Situación laboral y formativa de las carreras de los sectores estratégicos de Chile, en menos de un minuto.</p>
+    <div class="hero">
+      <video class="hero-video" id="hero-video" autoplay muted loop playsinline
+             preload="metadata" aria-hidden="true" tabindex="-1">
+        <source src="assets/hero.mp4" type="video/mp4">
+      </video>
+      <div class="hero-velo" aria-hidden="true"></div>
 
-      <form id="form-consulta" class="consulta-card" autocomplete="off">
-        <div class="campo">
-          <label for="sel-region">Región</label>
-          <select id="sel-region" required>
-            <option value="" disabled selected>Seleccione una región</option>
-          </select>
+      <div class="hero-contenido">
+        <div class="hero-texto">
+          <p class="hero-kicker">Plataforma de apoyo a la decisión · Estado de Chile</p>
+          <h1 class="hero-titulo">El talento del país,<br><em>región por región</em>.</h1>
+          <p class="hero-sub">La situación laboral y formativa de cada carrera estratégica, explicada en menos de un minuto. Para ministerios, gobiernos regionales y servicios públicos.</p>
+          <p class="hero-nota" id="inicio-nota">La información se actualiza automáticamente cada semana.</p>
         </div>
-        <div class="campo">
-          <label for="sel-carrera">Carrera</label>
-          <select id="sel-carrera" required>
-            <option value="" disabled selected>Seleccione una carrera</option>
-          </select>
-        </div>
-        <button type="submit" class="btn-analizar">Analizar</button>
-      </form>
 
-      <p class="inicio-nota" id="inicio-nota">La información se actualiza automáticamente cada semana.</p>
+        <form id="form-consulta" class="consulta-card" autocomplete="off">
+          <p class="consulta-titulo">Generar informe</p>
+          <div class="campo">
+            <label for="sel-region">Región</label>
+            <select id="sel-region" required>
+              <option value="" disabled selected>Seleccione una región</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="sel-carrera">Carrera</label>
+            <select id="sel-carrera" required>
+              <option value="" disabled selected>Seleccione una carrera</option>
+            </select>
+          </div>
+          <button type="submit" class="btn-analizar">Analizar</button>
+          <p class="consulta-pie">Informe ejecutivo · 4 indicadores · recomendación</p>
+        </form>
+      </div>
     </div>
   </section>
 
@@ -63,7 +75,7 @@
     </div>
 
     <!-- 1 · Encabezado -->
-    <header class="informe-head">
+    <header class="informe-head anim" style="--d:0">
       <p class="informe-sector" id="inf-sector"></p>
       <h1 class="informe-carrera" id="inf-carrera"></h1>
       <p class="informe-meta"><span id="inf-region"></span> · <span id="inf-actualizado"></span></p>
@@ -71,22 +83,22 @@
 
     <!-- 2 · Indicadores principales -->
     <div class="kpi-grid" role="list">
-      <div class="kpi" role="listitem">
+      <div class="kpi anim" style="--d:1" role="listitem">
         <p class="kpi-label">Vacantes y señales de demanda</p>
         <p class="kpi-valor" id="kpi-vacantes">—</p>
         <p class="kpi-sub" id="kpi-vacantes-sub">sector · nivel nacional</p>
       </div>
-      <div class="kpi" role="listitem">
+      <div class="kpi anim" style="--d:2" role="listitem">
         <p class="kpi-label">Matrícula regional</p>
         <p class="kpi-valor" id="kpi-matricula">—</p>
         <p class="kpi-sub" id="kpi-matricula-sub">estudiantes en la región</p>
       </div>
-      <div class="kpi" role="listitem">
+      <div class="kpi anim" style="--d:3" role="listitem">
         <p class="kpi-label">Nivel de brecha</p>
         <p class="kpi-valor kpi-valor-texto" id="kpi-brecha">—</p>
         <p class="kpi-sub" id="kpi-brecha-sub">en esta región</p>
       </div>
-      <div class="kpi" role="listitem">
+      <div class="kpi anim" style="--d:4" role="listitem">
         <p class="kpi-label">Tendencia</p>
         <p class="kpi-valor kpi-valor-texto" id="kpi-tendencia">—</p>
         <p class="kpi-sub" id="kpi-tendencia-sub">demanda del sector, semanal</p>
@@ -94,7 +106,7 @@
     </div>
 
     <!-- 3 · Estado de la situación -->
-    <div class="estado-banner" id="estado-banner">
+    <div class="estado-banner anim" id="estado-banner" style="--d:5">
       <span class="estado-punto" aria-hidden="true"></span>
       <div>
         <p class="estado-titulo" id="estado-titulo"></p>
@@ -103,19 +115,19 @@
     </div>
 
     <!-- 4 · Resumen ejecutivo -->
-    <article class="card card-resumen">
+    <article class="card card-resumen anim" style="--d:6">
       <h2>Resumen ejecutivo</h2>
       <p id="resumen-texto"></p>
     </article>
 
     <!-- 5 · Recomendación -->
-    <article class="card card-recomendacion">
+    <article class="card card-recomendacion anim" style="--d:7">
       <h2>Recomendación para tomadores de decisión</h2>
       <p id="reco-texto"></p>
       <p class="reco-accion" id="reco-accion" hidden></p>
     </article>
 
-    <div class="dos-columnas">
+    <div class="dos-columnas anim" style="--d:8">
       <!-- 6 · Contexto nacional -->
       <article class="card">
         <h2>Contexto nacional</h2>
@@ -131,7 +143,7 @@
     </div>
 
     <!-- 8 · Información secundaria -->
-    <div class="acordeones">
+    <div class="acordeones anim" style="--d:9">
       <details class="acordeon">
         <summary>Oferta formativa en la región</summary>
         <div class="acordeon-cuerpo" id="acc-oferta"></div>
