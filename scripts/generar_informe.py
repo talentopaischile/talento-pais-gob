@@ -422,10 +422,65 @@ def construir_historico(historico_csv: list[dict], brechas: list[dict], sectores
     return [{"fecha": f, "demanda": d} for f, d in sorted(por_fecha.items())]
 
 
-def construir_demanda_global(oportunidades: list[dict]) -> dict:
-    """Vista global de toda la demanda scraped: totales por región, tipo y sector.
-    Incluye los registros sin_clasificar (carreras fuera de los 10 sectores
-    estratégicos) como señal de demanda laboral general."""
+def construir_carreras_todas(detalle: list[dict]) -> list[dict]:
+    """Lista de TODAS las carreras de carreras_estrategicas.json sin filtrar por sector.
+    Cada carrera incluye: nombre, área Mineduc, sectores estratégicos (si aplica),
+    matrícula nacional, desglose por región e institución."""
+    por_nombre: dict[str, dict] = {}
+
+    for fila in detalle:
+        nombre = fila.get("nomb_carrera", "").strip()
+        rid = REGION_POR_SEDE.get(fila.get("region_sede", ""))
+        mat = int(fila.get("matriculados") or 0)
+        area_raw = fila.get("area_conocimiento", "Sin área").strip()
+        sectores_fila = fila.get("sectores", [])
+
+        if not nombre or rid is None:
+            continue
+
+        c = por_nombre.setdefault(nombre, {
+            "total": 0,
+            "area": area_raw,
+            "sectores": set(),
+            "regiones": {},
+        })
+        c["total"] += mat
+        for s in sectores_fila:
+            c["sectores"].add(s)
+        reg = c["regiones"].setdefault(rid, {"matricula": 0, "instituciones": {}})
+        reg["matricula"] += mat
+        inst = fila.get("nomb_inst", "").strip()
+        if inst:
+            reg["instituciones"][inst] = reg["instituciones"].get(inst, 0) + mat
+
+    out = []
+    for nombre, datos in sorted(por_nombre.items(), key=lambda kv: -kv[1]["total"]):
+        if datos["total"] <= 0:
+            continue
+        sects = [s for s in datos["sectores"] if s in SECTORES]
+        regiones_out = {}
+        for rid, reg in datos["regiones"].items():
+            insts = sorted(reg["instituciones"].items(), key=lambda kv: kv[1], reverse=True)
+            regiones_out[rid] = {
+                "matricula": reg["matricula"],
+                "instituciones": [[titulo_inst(i), m] for i, m in insts[:MAX_INSTITUCIONES_POR_REGION]],
+            }
+        out.append({
+            "id": slug(nombre),
+            "nombre": titulo_es(nombre),
+            "area": datos["area"],
+            "sectores": sects if sects else None,
+            "matricula_nacional": datos["total"],
+            "n_regiones": sum(1 for r in regiones_out.values() if r["matricula"] > 0),
+            "regiones": regiones_out,
+        })
+    return out
+
+
+def construir_demanda_nacional(oportunidades: list[dict]) -> dict:
+    """Demanda nacional: resumen de toda la demanda scraped (1368 registros) desglosada
+    por región, tipo y sector. Incluye sin_clasificar (carreras fuera de sectores
+    estratégicos) como indicador de demanda laboral general del país."""
     por_region: dict[str, int] = {}
     por_tipo: dict[str, int] = {}
     por_sector: dict[str, int] = {}
@@ -498,8 +553,9 @@ def main():
 
     sectores, fuentes_pipeline = construir_sectores(brechas, oportunidades)
     carreras = construir_carreras(carreras_src.get("detalle", []))
+    carreras_todas = construir_carreras_todas(carreras_src.get("detalle", []))
     historico = construir_historico(historico_csv, brechas, sectores)
-    demanda_global = construir_demanda_global(oportunidades)
+    demanda_nacional = construir_demanda_nacional(oportunidades)
 
     informe = {
         "generado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -512,8 +568,9 @@ def main():
         ],
         "sectores": sectores,
         "carreras": sorted(carreras, key=lambda c: (c["sector"], -c["matricula_nacional"])),
+        "carreras_todas": carreras_todas,
         "historico": historico,
-        "demanda_global": demanda_global,
+        "demanda_nacional": demanda_nacional,
     }
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -522,9 +579,9 @@ def main():
         json.dump(informe, f, ensure_ascii=False, separators=(",", ":"))
 
     kb = out_path.stat().st_size / 1024
-    n_sin_clasificar = demanda_global['sin_clasificar']['total']
-    print(f"OK {out_path} — {len(carreras)} carreras estrategicas, {len(historico)} semanas, "
-          f"{demanda_global['total_registros']} registros demanda ({n_sin_clasificar} sin clasificar), {kb:.0f} KB")
+    n_sin_clasificar = demanda_nacional['sin_clasificar']['total']
+    print(f"OK {out_path} — {len(carreras)} carreras estrategicas, {len(carreras_todas)} carreras totales, "
+          f"{len(historico)} semanas, {demanda_nacional['total_registros']} registros demanda ({n_sin_clasificar} sin clasificar), {kb:.0f} KB")
 
 
 if __name__ == "__main__":
