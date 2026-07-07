@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=3">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
@@ -74,95 +74,169 @@
   <section id="vista-informe" class="vista" hidden>
 
     <div class="informe-toolbar no-print">
-      <a href="./" id="btn-volver" class="btn-secundario">← Nueva consulta</a>
+      <a href="./" id="btn-volver" class="btn-secundario">← Volver a consulta</a>
       <div class="toolbar-acciones">
-        <button type="button" id="btn-copiar" class="btn-secundario">Copiar enlace</button>
-        <button type="button" id="btn-imprimir" class="btn-secundario">Imprimir / PDF</button>
+        <button type="button" id="btn-copiar" class="btn-secundario">Compartir</button>
+        <button type="button" id="btn-imprimir" class="btn-secundario">Descargar PDF</button>
       </div>
     </div>
 
-    <!-- 1 · Encabezado -->
+    <!-- 1 · Encabezado ejecutivo + 2 · Estado general -->
     <header class="informe-head anim" style="--d:0">
-      <p class="informe-sector" id="inf-sector"></p>
-      <h1 class="informe-carrera" id="inf-carrera"></h1>
-      <p class="informe-meta"><span id="inf-region"></span> · <span id="inf-actualizado"></span></p>
+      <div class="head-principal">
+        <p class="informe-sector" id="inf-sector"></p>
+        <h1 class="informe-carrera" id="inf-carrera"></h1>
+        <p class="informe-region" id="inf-region"></p>
+        <p class="informe-meta">
+          <svg class="ico-reloj" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.6V8l2.3 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span id="inf-actualizado"></span>
+          <button type="button" class="tip" data-tip="Los datos de demanda se recopilan automáticamente cada semana desde fuentes públicas (portales de empleo, Mercado Público, ANID, entre otras). La matrícula corresponde al registro oficial Mineduc 2025 y se actualiza una vez al año." aria-label="Información sobre la actualización de datos">?</button>
+        </p>
+      </div>
+      <aside class="estado-card" id="estado-card">
+        <p class="estado-card-label">Nivel de brecha en la región
+          <button type="button" class="tip" data-tip="Clasificación en cuatro niveles (suficiente, moderada, alta, crítica) obtenida con reglas fijas y auditables: combina el nivel de demanda nacional del sector con la matrícula de la carrera en la región, comparada contra el promedio regional del país. No interviene inteligencia artificial." aria-label="Cómo se calcula el nivel de brecha">?</button>
+        </p>
+        <p class="estado-card-valor" id="estado-valor">—</p>
+        <div class="estado-card-cuerpo">
+          <div class="estado-barras" id="estado-barras" aria-hidden="true"></div>
+          <p class="estado-card-frase" id="estado-frase"></p>
+        </div>
+        <p class="estado-card-interpretacion" id="estado-interpretacion"></p>
+      </aside>
     </header>
 
-    <!-- 2 · Estado actual (componente dominante) -->
-    <div class="estado-banner anim" id="estado-banner" style="--d:1">
-      <span class="estado-punto" aria-hidden="true"></span>
-      <div>
-        <p class="estado-titulo" id="estado-titulo"></p>
-        <p class="estado-frase" id="estado-frase"></p>
+    <!-- 9 · Alternador de mirada micro / macro -->
+    <nav class="vista-nav no-print anim" style="--d:1" aria-label="Cambiar entre mirada regional y nacional">
+      <div class="vista-nav-seg" role="group">
+        <button type="button" class="vista-nav-btn activo" data-destino="sec-diagnostico">Vista regional</button>
+        <button type="button" class="vista-nav-btn" data-destino="sec-comparacion">Vista nacional</button>
       </div>
+    </nav>
+
+    <!-- 3 · Resumen ejecutivo + 6 · Hallazgos -->
+    <div class="dos-col anim" id="sec-diagnostico" style="--d:2">
+      <article class="col-resumen">
+        <h2 class="seccion-titulo">Resumen Ejecutivo</h2>
+        <p id="resumen-texto"></p>
+      </article>
+      <aside class="col-hallazgos">
+        <h2 class="seccion-titulo">Hallazgos principales
+          <button type="button" class="tip" data-tip="Síntesis generada con reglas fijas a partir de los indicadores del informe: matrícula regional, promedio nacional, cobertura territorial y demanda del sector. Cada hallazgo es verificable en los indicadores de más abajo." aria-label="Cómo se generan los hallazgos">?</button>
+        </h2>
+        <ul class="hallazgos-lista" id="hallazgos-lista"></ul>
+      </aside>
     </div>
 
-    <!-- 3 · Indicadores principales -->
-    <div class="kpi-grid" role="list">
-      <div class="kpi anim" style="--d:2" role="listitem">
-        <p class="kpi-label">Vacantes y señales de demanda</p>
-        <p class="kpi-valor" id="kpi-vacantes">—</p>
-        <p class="kpi-sub" id="kpi-vacantes-sub">sector · nivel nacional</p>
-      </div>
-      <div class="kpi anim" style="--d:3" role="listitem">
-        <p class="kpi-label">Matrícula regional</p>
-        <p class="kpi-valor" id="kpi-matricula">—</p>
-        <p class="kpi-sub" id="kpi-matricula-sub">estudiantes en la región</p>
-      </div>
-      <div class="kpi anim" style="--d:4" role="listitem">
-        <p class="kpi-label">Nivel de brecha</p>
-        <p class="kpi-valor kpi-valor-texto" id="kpi-brecha">—</p>
-        <p class="kpi-sub" id="kpi-brecha-sub">en esta región</p>
-      </div>
-    </div>
-
-    <!-- 4 · Resumen ejecutivo -->
-    <article class="card card-resumen anim" style="--d:5">
-      <h2>Resumen ejecutivo</h2>
-      <p id="resumen-texto"></p>
-    </article>
-
-    <!-- 5 · Recomendación -->
-    <article class="card card-recomendacion anim" style="--d:6">
-      <h2>Recomendación para tomadores de decisión</h2>
-      <p id="reco-texto"></p>
-      <p class="reco-accion" id="reco-accion" hidden></p>
-    </article>
-
-    <!-- 6 · Contexto nacional -->
-    <section class="contexto-seccion anim" style="--d:7">
-      <h2>Contexto nacional</h2>
-      <div class="contexto-lista" id="contexto-lista"></div>
+    <!-- 4 · Indicadores clave -->
+    <section class="seccion anim" style="--d:3">
+      <h2 class="seccion-titulo">Indicadores clave
+        <button type="button" class="tip" data-tip="Cada indicador señala qué representa, de qué fuente proviene y cómo debe interpretarse. Los tooltips (?) de cada tarjeta entregan el detalle metodológico." aria-label="Sobre los indicadores">?</button>
+      </h2>
+      <div class="kpi-grid" id="kpi-grid" role="list"></div>
     </section>
 
-    <!-- 7 · Información secundaria -->
-    <div class="acordeones anim" style="--d:8">
-      <details class="acordeon">
-        <summary>Oferta formativa en la región</summary>
-        <div class="acordeon-cuerpo" id="acc-oferta"></div>
-      </details>
-      <details class="acordeon">
-        <summary>Comparación entre regiones</summary>
-        <div class="acordeon-cuerpo" id="acc-regiones"></div>
-      </details>
-      <details class="acordeon">
-        <summary>Diagnóstico del sector</summary>
-        <div class="acordeon-cuerpo" id="acc-sector"></div>
-      </details>
-      <details class="acordeon">
-        <summary>Metodología, fuentes y limitaciones</summary>
-        <div class="acordeon-cuerpo" id="acc-metodo"></div>
-      </details>
-    </div>
+    <!-- 7 · Interpretación -->
+    <section class="seccion anim" style="--d:4">
+      <h2 class="seccion-titulo">¿Qué explica este diagnóstico?</h2>
+      <div class="factores-grid" id="factores-grid"></div>
+    </section>
+
+    <!-- Oferta formativa (solo si existe en la región) -->
+    <section class="seccion" id="sec-oferta" hidden>
+      <h2 class="seccion-titulo">Oferta formativa en la región</h2>
+      <div class="card-blanca" id="oferta-cuerpo"></div>
+    </section>
+
+    <!-- 8 · Comparación regional (mapa + ranking) -->
+    <section class="seccion" id="sec-comparacion">
+      <div class="comparacion-head">
+        <h2 class="seccion-titulo">Comparación regional
+          <button type="button" class="tip" data-tip="Cada región se clasifica con las mismas reglas que la región consultada: su matrícula en esta carrera se compara con el promedio regional del país y con el nivel de demanda nacional del sector. Pase el cursor sobre una región del mapa para ver su detalle; haga clic para abrir su informe." aria-label="Cómo leer la comparación regional">?</button>
+        </h2>
+        <div class="comp-tabs no-print" role="group" aria-label="Alternar entre mapa y ranking">
+          <button type="button" class="comp-tab activo" data-panel="panel-mapa">Mapa</button>
+          <button type="button" class="comp-tab" data-panel="panel-ranking">Ranking</button>
+        </div>
+      </div>
+      <div class="card-blanca comparacion-grid">
+        <div class="comp-panel" id="panel-mapa">
+          <div class="mapa-leyenda-v" id="mapa-leyenda"></div>
+          <div class="mapa-leaflet" id="mapa-leaflet" role="img" aria-label="Mapa de Chile por nivel de brecha"></div>
+        </div>
+        <div class="comp-panel" id="panel-ranking">
+          <p class="ranking-titulo">Ranking de regiones <span class="ranking-sub">(según nivel de brecha)</span></p>
+          <div class="ranking-scroll"><table class="tabla-ranking" id="tabla-ranking"></table></div>
+          <p class="ranking-nota" id="ranking-nota"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contexto nacional del sector -->
+    <section class="seccion" id="sec-sector">
+      <h2 class="seccion-titulo">El sector a nivel nacional</h2>
+      <div class="card-blanca sector-card" id="sector-cuerpo"></div>
+    </section>
+
+    <!-- 10 · Evidencia considerada -->
+    <section class="seccion">
+      <h2 class="seccion-titulo">Evidencia considerada
+        <button type="button" class="tip" data-tip="Listado de las fuentes y criterios que sustentan este informe. Todo dato mostrado proviene del registro oficial de matrícula o del pipeline semanal de recolección; el sistema no estima ni infiere cifras." aria-label="Sobre la evidencia">?</button>
+      </h2>
+      <div class="evidencia-grid" id="evidencia-grid"></div>
+    </section>
+
+    <!-- 11 · Opciones de política pública -->
+    <section class="card-instrumentos anim">
+      <h2>Posibles instrumentos que podrían evaluarse</h2>
+      <p class="instrumentos-intro" id="instrumentos-intro"></p>
+      <ul class="instrumentos-lista" id="instrumentos-lista"></ul>
+      <p class="instrumentos-pie">Estas alternativas se presentan como opciones disponibles para las autoridades, no como instrucciones. Su pertinencia depende del presupuesto, las prioridades regionales y el contexto territorial.</p>
+    </section>
+
+    <!-- 12 · Alcance y limitaciones -->
+    <section class="seccion">
+      <h2 class="seccion-titulo">Alcance y limitaciones</h2>
+      <div class="alcance-grid">
+        <div class="alcance-col">
+          <h3>Qué información utiliza hoy el sistema</h3>
+          <ul id="alcance-lista"></ul>
+        </div>
+        <div class="alcance-col alcance-col-lim">
+          <h3>Qué información aún no incorpora</h3>
+          <ul id="limitaciones-lista"></ul>
+          <p class="alcance-nota">Estas variables no se muestran porque hoy no existe una fuente pública con la calidad y desagregación suficientes. El sistema prefiere reconocer la limitación antes que estimar cifras poco confiables.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 13 · Preguntas frecuentes -->
+    <section class="seccion">
+      <h2 class="seccion-titulo">Preguntas frecuentes</h2>
+      <div class="acordeones" id="faq-lista"></div>
+    </section>
 
     <footer class="informe-pie">
-      <p>Talento País · Elaborado con datos públicos (Mineduc, ANID, Mercado Público y portales de empleo). Documento de apoyo a la decisión; no reemplaza estudios sectoriales en profundidad.</p>
+      <p id="pie-texto">Talento País · Elaborado con datos públicos. Documento de apoyo a la decisión; no reemplaza estudios sectoriales en profundidad.</p>
     </footer>
   </section>
 
   <p id="error-carga" class="error-carga" hidden>No fue posible cargar los datos. Revise su conexión e intente nuevamente.</p>
+
+  <!-- Detalle auditable de la demanda del sector -->
+  <dialog id="dlg-demanda" class="dlg-demanda" aria-labelledby="dlg-titulo">
+    <div class="dlg-head">
+      <div>
+        <p class="dlg-kicker">Detalle de la demanda del sector</p>
+        <h2 class="dlg-titulo" id="dlg-titulo"></h2>
+        <p class="dlg-meta" id="dlg-meta"></p>
+      </div>
+      <button type="button" class="dlg-cerrar" id="dlg-cerrar" aria-label="Cerrar detalle">×</button>
+    </div>
+    <div class="dlg-cuerpo" id="dlg-cuerpo"></div>
+  </dialog>
 </main>
 
-<script src="app.js"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

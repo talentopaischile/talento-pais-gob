@@ -14,6 +14,7 @@ Fuentes leídas:
   datos/raw/carreras_estrategicas.json  → matrícula por carrera × institución × región (Mineduc 2025)
   datos/procesados/brechas.csv          → demanda semanal + nivel de brecha por sector
   datos/procesados/historico.csv        → serie semanal de demanda (para tendencia)
+  datos/procesados/oportunidades.json   → registros individuales de demanda (para el desglose por tipo)
   datos/procesados/data_meta.json       → fecha de última actualización del pipeline
 """
 
@@ -119,6 +120,8 @@ ACENTOS = {
     "santisima": "santísima", "aysen": "aysén", "tarapaca": "tarapacá",
     "biobio": "biobío", "nuble": "ñuble", "construccion": "construcción",
     "prevencion": "prevención", "topografia": "topografía", "geomensura": "geomensura",
+    "vinificacion": "vinificación", "gestion": "gestión", "nutricion": "nutrición",
+    "innovacion": "innovación", "comunicacion": "comunicación",
 }
 
 # Siglas institucionales que deben permanecer en mayúsculas
@@ -259,8 +262,104 @@ def extraer_accion(recomendacion: str) -> str:
     return (m.group(1).strip() if m else "").rstrip(".")
 
 
-def construir_sectores(brechas: list[dict]) -> dict:
+# ─── Detección conservadora de región en los registros de demanda ───────────
+# El campo `region` del scraper es genérico ("Chile", "No especificada"), pero
+# muchos títulos mencionan la región de forma explícita. Solo se etiqueta un
+# registro cuando su propio texto nombra una región chilena; nunca se infiere.
+REGION_PATRONES = [
+    ("arica",         r"arica"),
+    ("tarapaca",      r"tarapaca|iquique"),
+    ("antofagasta",   r"antofagasta|calama"),
+    ("atacama",       r"\batacama\b|copiapo"),
+    ("coquimbo",      r"coquimbo|la serena"),
+    ("valparaiso",    r"valparaiso|vina del mar"),
+    ("metropolitana", r"metropolitana|\bsantiago\b"),
+    ("ohiggins",      r"o'?higgins|rancagua"),
+    ("maule",         r"\bmaule\b|\btalca\b"),
+    ("nuble",         r"\bnuble\b|chillan"),
+    ("biobio",        r"biobio|bio-bio|concepcion"),
+    ("araucania",     r"araucania|temuco"),
+    ("losrios",       r"los rios|valdivia"),
+    ("loslagos",      r"los lagos|puerto montt|osorno"),
+    ("aysen",         r"aysen|coyhaique"),
+    ("magallanes",    r"magallanes|punta arenas"),
+]
+
+MAX_REGISTROS_POR_TIPO = 10
+
+
+def _sin_tildes(t: str) -> str:
+    return unicodedata.normalize("NFKD", t.lower()).encode("ascii", "ignore").decode()
+
+
+def detectar_regiones(texto: str) -> list[str]:
+    """Regiones chilenas nombradas explícitamente en el texto del registro."""
+    t = _sin_tildes(texto or "")
+    return [rid for rid, pat in REGION_PATRONES if re.search(pat, t)]
+
+
+def desglosar_oportunidades(oportunidades: list[dict]) -> tuple[dict, list[str]]:
+    """Cuenta los registros de demanda por sector × tipo, guarda una muestra de
+    registros por tipo (para el detalle auditable del frontend) y agrega la
+    ubicación mencionada en los textos. Usa la misma regla de conteo que el
+    pipeline (pertenencia al array `sectores`), de modo que la suma del
+    desglose coincide con demanda_oportunidades de brechas.csv."""
+    por_sector: dict[str, dict] = {}
+    fuentes_globales: set[str] = set()
+    for op in oportunidades or []:
+        tipo = (op.get("tipo") or "otro").strip()
+        fuente = (op.get("fuente") or "").strip()
+        if fuente:
+            fuentes_globales.add(fuente)
+        titulo = (op.get("titulo") or "").strip()
+        org = (op.get("organizacion") or "").strip()
+        regiones_txt = detectar_regiones(f"{titulo} {op.get('descripcion') or ''}")
+        score = op.get("relevancia_score") or 0
+        for sid in op.get("sectores", []):
+            if sid not in SECTORES:
+                continue
+            s = por_sector.setdefault(sid, {"tipos": {}, "fuentes": set(),
+                                            "registros": {}, "ubicacion": {}, "sin_ubicacion": 0})
+            s["tipos"][tipo] = s["tipos"].get(tipo, 0) + 1
+            if fuente:
+                s["fuentes"].add(fuente)
+            if regiones_txt:
+                for rid in regiones_txt:
+                    s["ubicacion"][rid] = s["ubicacion"].get(rid, 0) + 1
+            else:
+                s["sin_ubicacion"] += 1
+            s["registros"].setdefault(tipo, []).append({
+                "titulo": titulo or "(sin título)",
+                "fuente": fuente or None,
+                "org": org if org and _sin_tildes(org) != "no especificada" else None,
+                "url": (op.get("url") or "").strip() or None,
+                "regiones": regiones_txt or None,
+                "monto": op.get("monto_fmt") or None,
+                "_score": score,
+            })
+    out = {}
+    for sid, s in por_sector.items():
+        muestra = {}
+        for tipo, regs in s["registros"].items():
+            regs.sort(key=lambda r: r["_score"], reverse=True)
+            muestra[tipo] = [{k: v for k, v in r.items() if k != "_score" and v is not None}
+                             for r in regs[:MAX_REGISTROS_POR_TIPO]]
+        out[sid] = {
+            "desglose": [{"tipo": t, "n": n} for t, n in
+                         sorted(s["tipos"].items(), key=lambda kv: kv[1], reverse=True)],
+            "fuentes": sorted(s["fuentes"]),
+            "registros": muestra,
+            "ubicacion": {
+                "regiones": dict(sorted(s["ubicacion"].items(), key=lambda kv: kv[1], reverse=True)),
+                "sin_ubicacion": s["sin_ubicacion"],
+            },
+        }
+    return out, sorted(fuentes_globales)
+
+
+def construir_sectores(brechas: list[dict], oportunidades: list[dict]) -> tuple[dict, list[str]]:
     por_label = {b["sector_label"].strip(): b for b in brechas if b.get("sector_label")}
+    registros, fuentes_pipeline = desglosar_oportunidades(oportunidades)
     out = {}
     for sid, cfg in SECTORES.items():
         b, label_usado = None, None
@@ -268,16 +367,28 @@ def construir_sectores(brechas: list[dict]) -> dict:
             if label in por_label:
                 b, label_usado = por_label[label], label
                 break
+        reg = registros.get(sid, {})
+        demanda = int(b["demanda_oportunidades"]) if b and b.get("demanda_oportunidades") else None
+        desglose = reg.get("desglose") or None
+        # El desglose solo se publica si cuadra con la cifra oficial de brechas.csv;
+        # así el frontend nunca muestra una descomposición que no suma el total.
+        if desglose is not None and demanda is not None and sum(d["n"] for d in desglose) != demanda:
+            print(f"  ⚠ {sid}: desglose ({sum(d['n'] for d in desglose)}) ≠ demanda ({demanda}); se omite el desglose")
+            desglose = None
         out[sid] = {
             "label": cfg["label"],
             "demanda_sector": label_usado,   # de qué sector del pipeline viene la demanda
             "nivel_brecha": (b or {}).get("nivel_brecha") or None,
-            "demanda": int(b["demanda_oportunidades"]) if b and b.get("demanda_oportunidades") else None,
+            "demanda": demanda,
+            "demanda_desglose": desglose,
+            "demanda_registros": reg.get("registros") or None,
+            "demanda_ubicacion": reg.get("ubicacion") or None,
+            "fuentes_demanda": reg.get("fuentes") or None,
             "matricula_nacional_sector": int(b["matricula_estimada"]) if b and b.get("matricula_estimada") else None,
             "diagnostico": (b or {}).get("recomendacion") or None,
             "accion": extraer_accion((b or {}).get("recomendacion")) or None,
         }
-    return out
+    return out, fuentes_pipeline
 
 
 def construir_historico(historico_csv: list[dict], brechas: list[dict], sectores: dict) -> list[dict]:
@@ -323,6 +434,7 @@ def main():
     carreras_src = leer_fuente(base, "datos/raw/carreras_estrategicas.json", es_json=True)
     brechas_txt = leer_fuente(base, "datos/procesados/brechas.csv", es_json=False)
     historico_txt = leer_fuente(base, "datos/procesados/historico.csv", es_json=False)
+    oportunidades = leer_fuente(base, "datos/procesados/oportunidades.json", es_json=True) or []
     meta = leer_fuente(base, "datos/procesados/data_meta.json", es_json=True) or {}
 
     if not carreras_src or not brechas_txt:
@@ -332,7 +444,7 @@ def main():
     brechas = parse_csv(brechas_txt)
     historico_csv = parse_csv(historico_txt) if historico_txt else []
 
-    sectores = construir_sectores(brechas)
+    sectores, fuentes_pipeline = construir_sectores(brechas, oportunidades)
     carreras = construir_carreras(carreras_src.get("detalle", []))
     historico = construir_historico(historico_csv, brechas, sectores)
 
@@ -340,6 +452,7 @@ def main():
         "generado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "fuente_actualizada": meta.get("updated"),
         "fuente_matricula": carreras_src.get("fuente", "Mineduc — Matrícula Ed. Superior 2025"),
+        "fuentes_pipeline": fuentes_pipeline,
         "regiones": [
             {"id": rid, "nombre": nombre, "nombre_largo": largo}
             for rid, nombre, largo, _ in REGIONES
