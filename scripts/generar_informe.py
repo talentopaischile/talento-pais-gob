@@ -92,6 +92,8 @@ CURACION = {
 
 MAX_CARRERAS_POR_SECTOR = 12
 MAX_INSTITUCIONES_POR_REGION = 6
+MAX_INSTITUCIONES_POR_REGION_AREA = 4
+MAX_SIN_CLASIFICAR = 60
 
 MINUSCULAS = {"de", "del", "en", "la", "las", "los", "y", "e", "a", "el", "con", "para", "su", "o", "u"}
 
@@ -421,6 +423,137 @@ def construir_historico(historico_csv: list[dict], brechas: list[dict], sectores
     return [{"fecha": f, "demanda": d} for f, d in sorted(por_fecha.items())]
 
 
+def construir_carreras_por_area(detalle: list[dict]) -> dict:
+    """Agrupa TODAS las carreras de carreras_estrategicas.json por area_conocimiento Mineduc.
+    A diferencia de construir_carreras(), no filtra por SECTORES ni aplica el límite
+    MAX_CARRERAS_POR_SECTOR — expone la vista completa para el informe de GOREs."""
+    por_area: dict[str, dict] = {}   # area_id → {label, carreras: {nombre → datos}}
+    area_labels: dict[str, str] = {}
+
+    for fila in detalle:
+        nombre = fila.get("nomb_carrera", "").strip()
+        rid = REGION_POR_SEDE.get(fila.get("region_sede", ""))
+        mat = int(fila.get("matriculados") or 0)
+        area_raw = fila.get("area_conocimiento", "Sin área").strip()
+        nivel_global = fila.get("nivel_global", "").strip()
+        nivel_carrera_1 = fila.get("nivel_carrera_1", "").strip()
+        sectores_fila = fila.get("sectores", [])
+
+        if not nombre or rid is None:
+            continue
+
+        area_id = slug(area_raw)
+        area_labels[area_id] = area_raw
+        area_d = por_area.setdefault(area_id, {})
+        c = area_d.setdefault(nombre, {
+            "total": 0,
+            "nivel_global": nivel_global,
+            "nivel_carrera_1": nivel_carrera_1,
+            "sectores": set(),
+            "regiones": {},
+        })
+        c["total"] += mat
+        for s in sectores_fila:
+            c["sectores"].add(s)
+        reg = c["regiones"].setdefault(rid, {"matricula": 0, "instituciones": {}})
+        reg["matricula"] += mat
+        inst = fila.get("nomb_inst", "").strip()
+        if inst:
+            reg["instituciones"][inst] = reg["instituciones"].get(inst, 0) + mat
+
+    out = {}
+    for area_id in sorted(por_area):
+        por_carrera = por_area[area_id]
+        total_area = sum(c["total"] for c in por_carrera.values())
+        sectores_en_area: set[str] = set()
+        carreras_out = []
+        for nombre, datos in sorted(por_carrera.items(), key=lambda kv: -kv[1]["total"]):
+            if datos["total"] <= 0:
+                continue
+            sects = [s for s in datos["sectores"] if s in SECTORES]
+            sectores_en_area.update(sects)
+            regiones_out = {}
+            for rid, reg in datos["regiones"].items():
+                insts = sorted(reg["instituciones"].items(), key=lambda kv: kv[1], reverse=True)
+                regiones_out[rid] = {
+                    "matricula": reg["matricula"],
+                    "instituciones": [[titulo_inst(i), m] for i, m in insts[:MAX_INSTITUCIONES_POR_REGION_AREA]],
+                }
+            carreras_out.append({
+                "id": slug(nombre),
+                "nombre": titulo_es(nombre),
+                "sector": sects[0] if sects else None,
+                "nivel_global": datos["nivel_global"],
+                "matricula_nacional": datos["total"],
+                "n_regiones": sum(1 for r in regiones_out.values() if r["matricula"] > 0),
+                "regiones": regiones_out,
+            })
+        vistos: set[str] = set()
+        for c in carreras_out:
+            if c["id"] in vistos:
+                c["id"] = f"{c['id']}-{area_id[:6]}"
+            vistos.add(c["id"])
+        out[area_id] = {
+            "label": area_labels[area_id],
+            "total_matriculados": total_area,
+            "sectores_estrategicos": [s for s in SECTORES if s in sectores_en_area],
+            "n_carreras": len(carreras_out),
+            "carreras": carreras_out,
+        }
+    return out
+
+
+def construir_demanda_global(oportunidades: list[dict]) -> dict:
+    """Vista global de toda la demanda scraped: totales por región, tipo y sector.
+    Incluye los registros sin_clasificar (carreras fuera de los 10 sectores
+    estratégicos) como señal de demanda laboral general."""
+    por_region: dict[str, int] = {}
+    por_tipo: dict[str, int] = {}
+    por_sector: dict[str, int] = {}
+    sin_clasificar_regs: list[dict] = []
+
+    for op in oportunidades or []:
+        tipo = (op.get("tipo") or "otro").strip()
+        por_tipo[tipo] = por_tipo.get(tipo, 0) + 1
+
+        titulo = op.get("titulo", "")
+        desc = op.get("descripcion", "")
+        regiones_txt = detectar_regiones(f"{titulo} {desc}")
+        for rid in regiones_txt:
+            por_region[rid] = por_region.get(rid, 0) + 1
+
+        sectores = op.get("sectores", [])
+        es_sin_clasificar = not sectores or sectores == ["sin_clasificar"]
+        for s in sectores:
+            if s and s != "sin_clasificar":
+                por_sector[s] = por_sector.get(s, 0) + 1
+
+        if es_sin_clasificar:
+            fuente = (op.get("fuente") or "").strip()
+            org = (op.get("organizacion") or "").strip()
+            url = (op.get("url") or "").strip()
+            rec = {
+                "titulo": titulo or "(sin título)",
+                "tipo": tipo,
+                "fuente": fuente or None,
+                "org": org if org and _sin_tildes(org) != "no especificada" else None,
+                "url": url or None,
+                "regiones": regiones_txt or None,
+            }
+            sin_clasificar_regs.append({k: v for k, v in rec.items() if v is not None})
+
+    return {
+        "total_registros": len(oportunidades),
+        "por_region": dict(sorted(por_region.items(), key=lambda kv: kv[1], reverse=True)),
+        "por_tipo": dict(sorted(por_tipo.items(), key=lambda kv: kv[1], reverse=True)),
+        "por_sector": dict(sorted(por_sector.items(), key=lambda kv: kv[1], reverse=True)),
+        "sin_clasificar": {
+            "total": len(sin_clasificar_regs),
+            "registros": sin_clasificar_regs[:MAX_SIN_CLASIFICAR],
+        },
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--local", help="Ruta local al repo talento-pais-original")
@@ -447,6 +580,8 @@ def main():
     sectores, fuentes_pipeline = construir_sectores(brechas, oportunidades)
     carreras = construir_carreras(carreras_src.get("detalle", []))
     historico = construir_historico(historico_csv, brechas, sectores)
+    carreras_por_area = construir_carreras_por_area(carreras_src.get("detalle", []))
+    demanda_global = construir_demanda_global(oportunidades)
 
     informe = {
         "generado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -460,6 +595,8 @@ def main():
         "sectores": sectores,
         "carreras": sorted(carreras, key=lambda c: (c["sector"], -c["matricula_nacional"])),
         "historico": historico,
+        "carreras_por_area": carreras_por_area,
+        "demanda_global": demanda_global,
     }
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -467,8 +604,11 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(informe, f, ensure_ascii=False, separators=(",", ":"))
 
+    n_areas = len(carreras_por_area)
+    n_todas = sum(a["n_carreras"] for a in carreras_por_area.values())
     kb = out_path.stat().st_size / 1024
-    print(f"✓ {out_path} — {len(carreras)} carreras, {len(historico)} semanas de histórico, {kb:.0f} KB")
+    print(f"✓ {out_path} — {len(carreras)} carreras estratégicas, {n_todas} carreras en {n_areas} áreas, "
+          f"{len(historico)} semanas de histórico, {demanda_global['total_registros']} registros demanda, {kb:.0f} KB")
 
 
 if __name__ == "__main__":
